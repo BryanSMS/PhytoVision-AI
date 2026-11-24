@@ -8,6 +8,8 @@
   <title>PhytoVision AI · ResNet50 + TensorFlow.js + Grad-CAM</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z'/%3E%3Cpath d='M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12'/%3E%3C/svg%3E" />
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root {
@@ -1038,6 +1040,8 @@
 
     // Estado global
     let weights = null;
+    let gateModel = null;
+    let faceModel = null;
     let modelLoading = false;
     let analyzing = false;
     const GRAD_LAYER = 'conv5_block3_out';
@@ -1047,6 +1051,14 @@
     let currentDiagnosis = null;
     let cameraStream = null;
     let facingMode = 'environment';
+
+    const PLANT_KEYWORDS = [
+      'leaf', 'plant', 'flower', 'cabbage', 'broccoli', 'cauliflower', 'zucchini',
+      'cucumber', 'pepper', 'corn', 'buckeye', 'daisy', 'rapeseed', 'greenhouse',
+      'hay', 'artichoke', 'cardoon', 'squash', 'apple', 'orange', 'lemon', 'fig',
+      'strawberry', 'mushroom', 'fungus', 'acorn', 'vine', 'tree', 'fern', 'moss',
+      'herb', 'foliage', 'crop', 'lettuce', 'spinach', 'seed', 'thistle', 'clover'
+    ];
 
     const $ = (id) => document.getElementById(id);
 
@@ -1235,7 +1247,7 @@
       pill.textContent = status === 'ready' ? `Modelo Activo (${backend.toUpperCase()})` : status === 'loading' ? 'Cargando ResNet50…' : status === 'missing' ? 'Esperando modelo' : 'Error en modelo';
       meta.classList.toggle('hidden', !modelReady);
       banner.classList.toggle('hidden', status === 'ready' || status === 'loading');
-      if (modelReady) meta.innerHTML = '<span>Arquitectura: <strong>ResNet50 BN fusionada</strong> (224×224×3)</span><span>Capa Grad-CAM: <strong>conv5_block3_out</strong></span>';
+      if (modelReady) meta.innerHTML = '<span>Arquitectura: <strong>ResNet50 BN fusionada</strong> (224×224×3)</span><span>Capa Grad-CAM: <strong>conv5_block3_out</strong></span><span>Filtro previo: <strong>BlazeFace + MobileNet v2 + Umbral 65%</strong></span>';
       else $('setup-banner-msg').textContent = errorMsg || SETUP_MESSAGE;
       $('btn-analyze').disabled = !modelReady || !currentImageDataUrl || analyzing;
       $('btn-upload-model').disabled = modelLoading || analyzing;
@@ -1382,6 +1394,39 @@
       return { ...rendered, targetLayerName: GRAD_LAYER };
     }
 
+    async function validateIsPlant(imgEl) {
+      // 1. Bloqueo específico de rostros humanos (BlazeFace)
+      if (typeof blazeface !== 'undefined') {
+        if (!faceModel) faceModel = await blazeface.load();
+        const faces = await faceModel.estimateFaces(imgEl, false);
+        const hasFace = faces.some((f) => {
+          const p = Array.isArray(f.probability) ? f.probability[0] : Number(f.probability || 0);
+          return p > 0.75;
+        });
+        if (hasFace) {
+          throw new Error('Muestra rechazada: se detectó un rostro humano, no una hoja de cultivo.');
+        }
+      }
+
+      // 2. Filtro botánico positivo (MobileNet v2)
+      if (typeof mobilenet !== 'undefined') {
+        if (!gateModel) {
+          gateModel = await mobilenet.load({ version: 2, alpha: 0.5 });
+        }
+        const preds = await gateModel.classify(imgEl, 5);
+        if (!preds || !preds.length) return;
+
+        const botanicalScore = preds
+          .filter((p) => PLANT_KEYWORDS.some((kw) => p.className.toLowerCase().includes(kw)))
+          .reduce((acc, p) => acc + p.probability, 0);
+
+        if (botanicalScore < 0.05) {
+          const objeto = preds[0].className.split(',')[0];
+          throw new Error(`Muestra rechazada: la imagen parece ser "${objeto}" y no una hoja de cultivo (tomate, papa o maíz).`);
+        }
+      }
+    }
+
     async function analyzeImage() {
       if (!currentImageDataUrl || !modelReady || analyzing || modelLoading) return;
       analyzing = true;
@@ -1391,7 +1436,7 @@
       errBox.classList.add('hidden');
       const btn = $('btn-analyze');
       btn.disabled = true;
-      btn.textContent = 'Ejecutando Inferencia y Grad-CAM...';
+      btn.textContent = 'Verificando muestra foliar...';
 
       try {
         const imgEl = await new Promise((resolve, reject) => {
@@ -1400,6 +1445,9 @@
           img.onerror = () => reject(new Error('No se pudo decodificar la imagen.'));
           img.src = imageSnapshot;
         });
+
+        await validateIsPlant(imgEl);
+        btn.textContent = 'Ejecutando Inferencia y Grad-CAM...';
 
         const mode = $('preprocess-select').value;
         const t0 = performance.now();
@@ -1422,6 +1470,10 @@
             .sort((a, b) => b.probability - a.probability);
 
           const topPrediction = ranked[0];
+          if (topPrediction.probability < 0.65) {
+            throw new Error(`Confianza insuficiente (${(topPrediction.probability * 100).toFixed(1)}%). Asegúrate de enfocar claramente una hoja de tomate, papa o maíz.`);
+          }
+
           let gradCam = null;
           try {
             gradCam = computeGradCam(features, topPrediction.classInfo.index, imgEl);
@@ -1753,6 +1805,7 @@
     function setSelectedImage(dataUrl) {
       stopCamera();
       showCaptureAlert('');
+      $('runtime-error').classList.add('hidden');
       currentImageDataUrl = dataUrl;
       $('preview-image').src = dataUrl;
       $('dropzone').classList.add('hidden');
@@ -1764,6 +1817,7 @@
       currentImageDataUrl = null;
       currentDiagnosis = null;
       showCaptureAlert('');
+      $('runtime-error').classList.add('hidden');
       $('preview-container').classList.add('hidden');
       $('dropzone').classList.remove('hidden');
       $('result-card').classList.add('hidden');
