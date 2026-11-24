@@ -101,3 +101,7 @@ Actualizar esta tabla con los resultados de la ejecución definitiva del noteboo
 - [PlantDoc](https://github.com/pratikkayal/PlantDoc-Dataset).
 
 Consultar las condiciones de uso de los datasets antes de redistribuir imágenes o recursos derivados.
+
+## Aplicación web
+
+[Acceder a PhytoVision AI](https://bryansms.github.io/PhytoVision-AI/)
