@@ -4,6 +4,14 @@
 
 Proyecto académico de Inteligencia Artificial: Principios y Técnicas — Universidad Privada Antenor Orrego (2026).
 
+## Integrantes
+
+- Carhuajulca Zaña, José
+- Lopez Marchan, Javier
+- Muñoz Samame, Bryan
+- Narvaez Salas, Jhosep
+- Pereda Flores, Josep (Coordinador)
+  
 ## Objetivo
 
 Desarrollar y evaluar un clasificador de imágenes de hojas de tomate, papa y maíz, y estudiar su capacidad de generalización desde PlantVillage (condiciones principalmente controladas) hacia PlantDoc (condiciones visuales más variadas).
