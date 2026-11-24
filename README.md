@@ -3,7 +3,7 @@
 **Detección y clasificación de enfermedades en plantas mediante visión artificial: evaluación de la generalización en imágenes de diferentes condiciones.**
 
 Proyecto académico de Inteligencia Artificial: Principios y Técnicas — Universidad Privada Antenor Orrego (2026).
-
+## Integrantes
 ## Objetivo
 
 Desarrollar y evaluar un clasificador de imágenes de hojas de tomate, papa y maíz, y estudiar su capacidad de generalización desde PlantVillage (condiciones principalmente controladas) hacia PlantDoc (condiciones visuales más variadas).
